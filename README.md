@@ -23,7 +23,8 @@ configuration lives in that file and can be modified to suit your needs.
 ## Quick Start
 
 ```bash
-# Start everything
+git clone https://github.com/rkuester/devpool.git
+cd devpool
 just up
 ```
 
