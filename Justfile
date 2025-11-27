@@ -2,6 +2,24 @@
 
 compose := "docker compose -f devpool.yml"
 project := "devpool"
+host := `hostname -I | awk '{print $1}'`
+
+# Show status and URLs (default)
+default: status
+
+# Show status and URLs
+status:
+    @echo "Devpool URLs:"
+    @echo "  Welcome:  http://{{host}}:8080"
+    @echo "  Stratum:  stratum+tcp://{{host}}:3333"
+    @echo "  Grafana:  http://{{host}}:3000"
+    @echo "  Mempool:  http://{{host}}:8081"
+    @echo ""
+    @docker compose -p {{project}} ps 2>/dev/null || echo "(not running)"
+    @echo ""
+    @echo "Run 'just --list' for available commands."
+
+alias help := status
 
 # Start all services
 up:
@@ -11,6 +29,12 @@ up:
 # Stop all services
 down:
     docker compose -p {{project}} down
+
+# Restart all services
+restart:
+    docker compose -p {{project}} down
+    {{compose}} up -d
+    @echo "Devpool ready: http://localhost:8080 or http://$(hostname -I | awk '{print $1}'):8080"
 
 # Stop all services and erase data volumes
 purge:
