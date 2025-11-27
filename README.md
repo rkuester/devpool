@@ -80,26 +80,43 @@ A fast miner submitting shares every few seconds would produce blocks every few
 seconds, which overwhelms the block explorer and doesn't reflect real-world
 mining behavior.
 
-**Workaround:** We set the pool difficulty high enough that miners only
-submit shares (and thus blocks) about once per minute. The default is 7500,
-tuned for roughly 0.5 TH/s. If you want blocks faster or slower, adjust
-`start_difficulty` in the hydrapool config inside `devpool.yml`.
+**Workaround:** We set the pool difficulty high enough that miners only submit
+shares (and thus blocks) about once every 30 seconds. The default is 7000,
+tuned for ~1 TH/s. To adjust for your hashrate:
+
+```bash
+just difficulty 14000    # for ~2 TH/s
+```
+
+Or edit `start_difficulty` and `minimum_difficulty` directly in `devpool.yml`.
 
 <div align="center">
 
 | Difficulty | Target Hashrate |
 |------------|-----------------|
-| 7,500      | ~0.5 TH/s       |
-| 15,000     | ~1 TH/s         |
-| 70,000     | ~5 TH/s         |
-| 140,000    | ~10 TH/s        |
+| 7,000      | ~1 TH/s         |
+| 35,000     | ~5 TH/s         |
+| 70,000     | ~10 TH/s        |
+| 700,000    | ~100 TH/s       |
 
 </div>
 
-**Future work:** The right fix is either an upstream submission threshold in
-Hydrapool (only submit shares above X difficulty to bitcoind) or a minimum
-difficulty setting in a custom bitcoind test network. For now, the pool
-difficulty workaround does the job.
+## Future Work
+
+The difficulty workaround above works, but it means every share is a block.
+This doesn't reflect real-world pool behavior where miners submit many shares
+but only occasionally find a block. For more realistic testing, we'd want
+shares and blocks to be decoupled.
+
+Two possible fixes (both would be configuration options for development setups):
+
+1. **Upstream submission threshold in Hydrapool:** Only submit shares to
+   bitcoind if they exceed a configurable difficulty, allowing normal share
+   submission at lower difficulties.
+
+2. **Minimum network difficulty in bitcoind:** A command-line option to set a
+   floor on network difficulty in block headers from block 1 onward, so shares
+   below it don't become blocks.
 
 ## Troubleshooting
 

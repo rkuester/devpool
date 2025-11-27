@@ -94,16 +94,13 @@ configs:
       # Pool share difficulty. With OP_TRUE signet (diff 1), every share
       # that meets this difficulty becomes a block.
       #
-      # Difficulty for ~1 block/min at various hashrates:
-      #   7K     0.5 TH/s
-      #   14K    1 TH/s
-      #   70K    5 TH/s
-      #   140K   10 TH/s
-      #   700K   50 TH/s
-      #   1.4M   100 TH/s
-      #   2.8M   200 TH/s
-      start_difficulty = 7500
-      minimum_difficulty = 7500
+      # Difficulty for ~1 block every 30 seconds:
+      #   7K     1 TH/s
+      #   35K    5 TH/s
+      #   70K    10 TH/s
+      #   700K   100 TH/s
+      start_difficulty = 7000
+      minimum_difficulty = 7000
       # Use this address as the miner's username for testing
       bootstrap_address = "tb1p66yfevypqdhqlth68g6327khzzrtzgajk9ztvjte3dy5cvq2jcwsyrjmad"
       zmqpubhashblock = "tcp://bitcoind:28334"
