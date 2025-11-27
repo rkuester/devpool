@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Devpool - Hydrapool Development Stack</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;
+           background: #fff; color: #333; }
+    h1 { color: #f7931a; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+    pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+    .links { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 20px 0; }
+    .links a { display: block; padding: 15px; background: #f7931a; color: white;
+               text-decoration: none; border-radius: 5px; text-align: center; }
+    .links a:hover { background: #e8850b; }
+    .status { padding: 10px; background: #fff3cd; border-radius: 5px; margin: 20px 0; }
+
+    @media (prefers-color-scheme: dark) {
+      body { background: #1a1a1a; color: #e0e0e0; }
+      code, pre { background: #2d2d2d; color: #e0e0e0; }
+      .status { background: #3d3520; color: #ffd966; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Devpool</h1>
+  <p>Bitcoin signet (OP_TRUE) + Hydrapool development stack.</p>
+
+  <div class="status">
+    <strong>First run?</strong> Connect your miner and mine a block. Mempool won't
+    work until block 1 is mined (electrs is waiting for bitcoind to exit IBD).
+  </div>
+
+  <h2>Miner Configuration</h2>
+  <pre id="miner-config">Pool:     stratum+tcp://localhost:3333
+Address:  tb1p66yfevypqdhqlth68g6327khzzrtzgajk9ztvjte3dy5cvq2jcwsyrjmad
+Password: x</pre>
+
+  <h2>Services</h2>
+  <div class="links">
+    <a href="//:3000" data-port="3000">Grafana Dashboard<br><small>:3000</small></a>
+    <a href="//:8081" data-port="8081">Mempool Block Explorer<br><small>:8081</small></a>
+  </div>
+  <script>
+    var host = location.hostname;
+    document.querySelectorAll('.links a[data-port]').forEach(a => {
+      a.href = location.protocol + '//' + host + ':' + a.dataset.port;
+    });
+    document.getElementById('miner-config').textContent =
+      'Pool:     stratum+tcp://' + host + ':3333\n' +
+      'Address:  tb1p66yfevypqdhqlth68g6327khzzrtzgajk9ztvjte3dy5cvq2jcwsyrjmad\n' +
+      'Password: x';
+    document.getElementById('api-url').textContent = host + ':46884';
+  </script>
+
+  <h2>Credentials</h2>
+  <ul>
+    <li><strong>Grafana:</strong> admin / admin (anonymous viewing enabled)</li>
+    <li><strong>Hydrapool API (<span id="api-url">:46884</span>):</strong> dev / dev</li>
+  </ul>
+
+  <h2>Commands</h2>
+  <pre>just up              # Start all services
+just down            # Stop all services
+just purge           # Stop and erase all data
+just logs            # Follow all logs
+just logs hydrapool  # Follow hydrapool logs
+just ps              # Show status</pre>
+
+  <h2>To Stop</h2>
+  <pre>just down</pre>
+  <p>Or <code>just purge</code> to stop and erase all data.</p>
+</body>
+</html>

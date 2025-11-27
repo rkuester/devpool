@@ -1,0 +1,325 @@
+name: devpool
+
+# Development stack: Bitcoin signet (OP_TRUE) + Hydrapool + Mempool
+#
+# Uses OP_TRUE signet challenge (signetchallenge=51) so any miner can
+# produce valid blocks without signatures.
+#
+# Usage:
+#   just up      # Start all services
+#   just down    # Stop all services
+#   just purge   # Stop and erase all data
+#   just logs    # Follow logs
+#
+# Startup behavior:
+#   1. All services start immediately (no waiting for first block)
+#   2. Electrs will be "unhealthy" until a block is mined (stuck in IBD)
+#   3. Mempool will retry connecting to electrs until it's ready
+#   4. Connect your miner to stratum+tcp://localhost:3333 and mine a block
+#   5. Once block 1 is mined, electrs becomes healthy and mempool works
+#
+# URLs:
+#   - Welcome:  http://localhost:8080
+#   - Stratum:  stratum+tcp://localhost:3333
+#   - Grafana:  http://localhost:3000
+#   - Mempool:  http://localhost:8081
+#
+# Miner configuration:
+#   - Pool:     stratum+tcp://localhost:3333
+#   - Address:  tb1p66yfevypqdhqlth68g6327khzzrtzgajk9ztvjte3dy5cvq2jcwsyrjmad
+#   - Password: x (or anything)
+#
+# Internal services (not exposed to host):
+#   - bitcoind:    Bitcoin Core signet (RPC 38332, ZMQ 28332-28334)
+#   - prometheus:  Metrics collection (port 9090)
+#   - electrs:     Electrum server (port 50001)
+#   - mempool-db:  MariaDB (port 3306)
+#   - mempool-api: Mempool backend (port 8999)
+#
+# Credentials (all work out of the box):
+#   - bitcoind RPC:   hydra / hydra
+#   - hydrapool API:  dev / dev
+#   - grafana:        admin / admin (anonymous viewing enabled)
+#   - mempool-db:     mempool / mempool
+
+configs:
+  prometheus_config:
+    content: |
+      global:
+        scrape_interval: 15s
+      scrape_configs:
+        - job_name: 'hydrapool'
+          scrape_interval: 5s
+          static_configs:
+            - targets: ['hydrapool:46884']
+          metrics_path: "/metrics"
+          basic_auth:
+            username: 'dev'
+            password: 'dev'
+
+  grafana_datasource:
+    content: |
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          access: proxy
+          url: http://prometheus:9090
+          isDefault: true
+
+  grafana_dashboards:
+    content: |
+      apiVersion: 1
+      providers:
+        - name: 'Hydra Pool'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          updateIntervalSeconds: 10
+          allowUiUpdates: false
+          options:
+            path: /etc/grafana/dashboards
+
+  hydrapool_config:
+    content: |
+      [store]
+      path = "/var/lib/hydrapool/store.db"
+      background_task_frequency_hours = 24
+      pplns_ttl_days = 7
+
+      [stratum]
+      hostname = "0.0.0.0"
+      port = 3333
+      # Pool share difficulty. With OP_TRUE signet (diff 1), every share
+      # that meets this difficulty becomes a block.
+      #
+      # Difficulty for ~1 block/min at various hashrates:
+      #   7K     0.5 TH/s
+      #   14K    1 TH/s
+      #   70K    5 TH/s
+      #   140K   10 TH/s
+      #   700K   50 TH/s
+      #   1.4M   100 TH/s
+      #   2.8M   200 TH/s
+      start_difficulty = 7500
+      minimum_difficulty = 7500
+      # Use this address as the miner's username for testing
+      bootstrap_address = "tb1p66yfevypqdhqlth68g6327khzzrtzgajk9ztvjte3dy5cvq2jcwsyrjmad"
+      zmqpubhashblock = "tcp://bitcoind:28334"
+      network = "signet"
+      version_mask = "1fffe000"
+      difficulty_multiplier = 1.0
+      pool_signature = "devpool"
+
+      [bitcoinrpc]
+      url = "http://bitcoind:38332"
+      username = "hydra"
+      password = "hydra"
+
+      [logging]
+      level = "info"
+      stats_dir = "/var/lib/hydrapool/stats"
+
+      [api]
+      hostname = "0.0.0.0"
+      port = 46884
+      auth_user = "dev"
+      # Generated with: hydrapool_cli gen-auth dev dev
+      auth_token = "d203d1bc90fbc0462f76ead4f8d81e3b$$becb7fcec674908cfaae1332996f65a946b6b73cddeb1e7be22a13108502f47c"
+
+services:
+  bitcoind:
+    image: lncm/bitcoind:v28.0
+    command:
+      - -signet
+      # OP_TRUE (0x51): any miner can produce blocks without a signature.
+      # Network difficulty starts at minimum (~1), so any share exceeding
+      # network difficulty becomes a block.
+      - -signetchallenge=51
+      - -server
+      - -txindex=1
+      - -rpcuser=hydra
+      - -rpcpassword=hydra
+      - -rpcallowip=0.0.0.0/0
+      - -rpcbind=0.0.0.0
+      - -zmqpubrawblock=tcp://0.0.0.0:28332
+      - -zmqpubrawtx=tcp://0.0.0.0:28333
+      - -zmqpubhashblock=tcp://0.0.0.0:28334
+      - -fallbackfee=0.0001
+      - -mintxfee=0.00001
+    volumes:
+      - bitcoind_data:/root/.bitcoin
+    healthcheck:
+      test: ["CMD", "bitcoin-cli", "-signet", "-rpcuser=hydra", "-rpcpassword=hydra", "getblockchaininfo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - mining
+
+  hydrapool:
+    image: ghcr.io/256foundation/hydrapool:latest
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    environment:
+      - RUST_LOG=info
+    configs:
+      - source: hydrapool_config
+        target: /etc/hydrapool/config.toml
+    ports:
+      - "0.0.0.0:3333:3333"   # Stratum
+      - "0.0.0.0:46884:46884" # API
+    volumes:
+      - hydrapool_data:/var/lib/hydrapool
+    networks:
+      - mining
+
+  electrs:
+    image: mempool/electrs:latest
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    command:
+      - -vvv
+      - --network=signet
+      - --daemon-rpc-addr=bitcoind:38332
+      - --daemon-dir=/root/.bitcoin
+      - --cookie=hydra:hydra
+      - --electrum-rpc-addr=0.0.0.0:50001
+      - --http-addr=0.0.0.0:3002
+      - --db-dir=/data
+      - --jsonrpc-import
+    volumes:
+      - electrs_data:/data
+      - bitcoind_data:/root/.bitcoin:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3002/blocks/tip/height"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - mining
+
+  mempool-db:
+    image: mariadb:10.11
+    environment:
+      MYSQL_DATABASE: mempool
+      MYSQL_USER: mempool
+      MYSQL_PASSWORD: mempool
+      MYSQL_ROOT_PASSWORD: mempool
+    volumes:
+      - mempool_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - mining
+
+  mempool-api:
+    image: mempool/backend:latest
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+      electrs:
+        condition: service_started
+      mempool-db:
+        condition: service_healthy
+    environment:
+      MEMPOOL_BACKEND: "electrum"
+      MEMPOOL_NETWORK: "signet"
+      MEMPOOL_ENABLED: "true"
+      MEMPOOL_AUDIT: "false"
+      MEMPOOL_CPFP_INDEXING: "false"
+      MEMPOOL_AUTOMATIC_BLOCK_REINDEXING: "false"
+      CORE_RPC_HOST: "bitcoind"
+      CORE_RPC_PORT: "38332"
+      CORE_RPC_USERNAME: "hydra"
+      CORE_RPC_PASSWORD: "hydra"
+      ELECTRUM_HOST: "electrs"
+      ELECTRUM_PORT: "50001"
+      ELECTRUM_TLS_ENABLED: "false"
+      DATABASE_ENABLED: "true"
+      DATABASE_HOST: "mempool-db"
+      DATABASE_PORT: "3306"
+      DATABASE_DATABASE: "mempool"
+      DATABASE_USERNAME: "mempool"
+      DATABASE_PASSWORD: "mempool"
+      STATISTICS_ENABLED: "false"
+    networks:
+      - mining
+
+  mempool-web:
+    image: mempool/frontend:latest
+    depends_on:
+      - mempool-api
+    environment:
+      FRONTEND_HTTP_PORT: "8081"
+      BACKEND_MAINNET_HTTP_HOST: "mempool-api"
+    ports:
+      - "0.0.0.0:8081:8081"
+    networks:
+      - mining
+
+  welcome:
+    image: nginx:alpine
+    volumes:
+      - ./welcome.html:/usr/share/nginx/html/index.html:ro,Z
+    ports:
+      - "0.0.0.0:8080:80"
+    networks:
+      - mining
+
+  prometheus:
+    image: prom/prometheus:latest
+    depends_on:
+      - hydrapool
+    configs:
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
+    volumes:
+      - prometheus_data:/prometheus
+    networks:
+      - mining
+
+  grafana:
+    image: grafana/grafana:latest
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/pool.json
+    configs:
+      - source: grafana_datasource
+        target: /etc/grafana/provisioning/datasources/prometheus.yml
+      - source: grafana_dashboards
+        target: /etc/grafana/provisioning/dashboards/dashboards.yml
+    ports:
+      - "0.0.0.0:3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./pool-dashboard.json:/etc/grafana/dashboards/pool.json:ro
+    networks:
+      - mining
+
+volumes:
+  bitcoind_data:
+  hydrapool_data:
+  electrs_data:
+  mempool_db_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  mining:
+    driver: bridge
