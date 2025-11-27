@@ -23,3 +23,20 @@ logs *args:
 # Show service status
 ps:
     docker compose -p {{project}} ps -a
+
+# Set pool difficulty (e.g., `just difficulty 15000` for ~1 TH/s)
+difficulty value="":
+    #!/bin/bash
+    if [ -z "{{value}}" ]; then
+        echo "Usage: just difficulty <value>"
+        echo ""
+        echo "Difficulty for ~1 block/min at various hashrates:"
+        echo "  7500    ~0.5 TH/s"
+        echo "  15000   ~1 TH/s"
+        echo "  70000   ~5 TH/s"
+        echo "  140000  ~10 TH/s"
+        exit 1
+    fi
+    sed -i 's/start_difficulty = [0-9]*/start_difficulty = {{value}}/' devpool.yml
+    sed -i 's/minimum_difficulty = [0-9]*/minimum_difficulty = {{value}}/' devpool.yml
+    echo "Difficulty set to {{value}}. Restart with: just down && just up"
